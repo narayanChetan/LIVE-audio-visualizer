@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title> Visualizer</title>
+<style>
+  :root{
+    --bg:#0b0b0d;
+    --panel-bg: rgba(255,255,255,0.06);
+    --glass-border: rgba(255,255,255,0.06);
+    --muted: rgba(255,255,255,0.7);
+    --accent: #ffffff;
+    --accent-2: rgba(255,255,255,0.08);
+    --control-bg: rgba(255,255,255,0.03);
+  }
+
+  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,"Helvetica Neue",Arial;color:#fff;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+
+/* Layout */
+  .wrap{display:grid;grid-template-columns:1fr 340px;gap:20px;padding:20px;box-sizing:border-box;height:100vh;align-items:center}
+  @media (max-width:920px){ .wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr; padding:14px} .panel{order:2} }
+
+  /* Stage */
+  .stage{position:relative;border-radius:20px;overflow:hidden;background:linear-gradient(180deg,#050506 0%, rgba(255,255,255,0.01) 100%);box-shadow:0 10px 40px rgba(0,0,0,0.6);min-height:560px;display:flex;align-items:center;justify-content:center;padding:28px}
+  @media (max-width:920px){ .stage{min-height:60vh;padding:18px;border-radius:14px} }
+
+  canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block;pointer-events:none}
+
+  /* center preview circle container to keep proportions */
+  .centerWrap{position:relative;width:64vmin;height:64vmin;max-width:760px;max-height:760px;border-radius:999px;background:#000;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 40px rgba(0,0,0,0.6);overflow:visible}
+  @media (max-width:920px){ .centerWrap{width:82vmin;height:82vmin} }
+
+  /* Panel (dashboard) - minimal iOS style */
+  .panel{background:linear-gradient(180deg,var(--panel-bg), rgba(255,255,255,0.01));padding:18px;border-radius:16px;border:1px solid var(--glass-border);backdrop-filter: blur(8px);box-shadow: 0 8px 30px rgba(0,0,0,0.45);min-width:260px}
+  .panel h2{margin:0;font-size:18px}
+  .panel p{margin:6px 0 0 0;color:var(--muted);font-size:13px}
+
+  .row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+
+  .btn{
+    background:var(--control-bg);border:1px solid var(--glass-border);
+    color:var(--accent);padding:10px 12px;border-radius:12px;font-weight:600;cursor:pointer;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn.ghost{background:transparent;border:1px dashed var(--glass-border)}
+  .btn:active{transform:translateY(1px)}
+
+  label.small{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+  .select, .slider{border-radius:10px;padding:10px;background:#050507;border:1px solid rgba(255,255,255,0.03);color: #fff;font-weight:600}
+  .select{min-width:160px}
+
+  .rangeRow{display:flex;align-items:center;gap:10px}
+  .rangeVal{min-width:44px;text-align:right;color:var(--muted);font-size:13px}
+
+  footer.mobileRow{display:none}
+  @media (max-width:920px){ footer.mobileRow{display:flex;position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:var(--panel-bg);padding:8px;border-radius:999px;border:1px solid var(--glass-border);gap:8px;z-index:50} }
+
+  .smallNote{font-size:12px;color:var(--muted);margin-top:10px}
+  .muted{color:var(--muted)}
+
+  /* minimal subtle icons */
+  .icon{width:16px;height:16px;display:inline-block;opacity:0.9}
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- Stage / Visualizer -->
+    <div class="stage">
+      <div class="centerWrap" id="centerWrap" aria-hidden>
+        <canvas id="bgCanvas"></canvas>        
+        <canvas id="trailCanvas"></canvas>     
+        <canvas id="mainCanvas"></canvas>      
+      </div>
+    </div>
+
+    <!-- Panel / Minimal iOS style dashboard -->
+    <aside class="panel" id="panel">
+      <h2>Minimal Visualizer</h2>
+      <p class="muted">visualizer made by chetan.</p>
+
+      <div class="row">
+        <div class="controls">
+          <button class="btn" id="btnLoad">📁 Upload</button>
+          <button class="btn" id="btnMic">🎤 Mic</button>
+          <button class="btn" id="btnPlay">▶ Play</button>
+          <button class="btn" id="btnFull">⛶ Full</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div style="flex:1">
+          <label class="small">Mode</label>
+          <select id="modeSelect" class="select">
+            <option value="double">Double (White Sharp)</option>
+            <option value="bars">Bars Circle</option>
+            <option value="sharp">Sharp Line</option>
+            <option value="spikes">Spikes</option>
+            <option value="curveSpikes">Curve + Spikes</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div style="flex:1">
+          <label class="small">Background</label>
+          <select id="bgSelect" class="select">
+            <option value="none">Pure Black</option>
+            <option value="fog">Mat Black</option>
+            <option value="particles">Soft Black</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row rangeRow">
+        <div style="flex:1">
+          <label class="small">Intensity</label>
+          <input id="intensity" class="slider" type="range" min="0.4" max="3.6" step="0.05" value="1.2" />
+        </div>
+        <div class="rangeVal" id="intensityVal">1.20x</div>
+      </div>
+
+      <div class="row rangeRow">
+        <div style="flex:1">
+          <label class="small">Smoothing</label>
+          <input id="smoothing" class="slider" type="range" min="0" max="0.98" step="0.01" value="0.86" />
+        </div>
+        <div class="rangeVal" id="smoothingVal">0.86</div>
+      </div>
+
+      <div class="row">
+        <div style="flex:1">
+          <label class="small">Quality</label>
+          <select id="quality" class="select">
+            <option value="low">Low (mobile)</option>
+            <option value="med" selected>Medium</option>
+            <option value="high">High (desktop)</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="smallNote muted">Tip: Allow mic and tap the stage to resume audio on mobile. Intensity raises how much each line moves on bass.</p>
+    </aside>
+
+  </div>
+
+  <!-- mobile quick controls -->
+  <footer class="mobileRow" aria-hidden>
+    <button class="btn" id="mMic">🎤</button>
+    <button class="btn" id="mLoad">📁</button>
+    <button class="btn" id="mPlayMobile">▶</button>
+  </footer>
+
+  <!-- hidden file input -->
+  <input type="file" id="audioFile" accept="audio/*" style="display:none" />
+
+<script>
+/* ======= State ======= */
+const state = {
+  audioCtx: null,
+  analyser: null,
+  source: null,
+  audioEl: null,
+  mediaStream: null,
+  fftSize: 2048,
+  smoothing: 0.86,
+  intensity: 1.2,
+  mode: 'double',
+  bgMode: 'none',
+  dpr: Math.max(1, window.devicePixelRatio || 1),
+  quality: 'med',
+  dataArray: null,
+  waveform: null,
+  playing: false,
+  particles: []
+};
+
+/* ======= DOM ======= */
+const bgCanvas = document.getElementById('bgCanvas');
+const trailCanvas = document.getElementById('trailCanvas');
+const mainCanvas = document.getElementById('mainCanvas');
+const centerWrap = document.getElementById('centerWrap');
+
+const bgCtx = bgCanvas.getContext('2d');
+const tCtx = trailCanvas.getContext('2d');
+const ctx = mainCanvas.getContext('2d');
+
+const btnLoad = document.getElementById('btnLoad');
+const btnMic = document.getElementById('btnMic');
+const btnPlay = document.getElementById('btnPlay');
+const btnFull = document.getElementById('btnFull');
+const audioFileInput = document.getElementById('audioFile');
+
+const modeSelect = document.getElementById('modeSelect');
+const bgSelect = document.getElementById('bgSelect');
+const intensityEl = document.getElementById('intensity');
+const intensityVal = document.getElementById('intensityVal');
+const smoothingEl = document.getElementById('smoothing');
+const smoothingVal = document.getElementById('smoothingVal');
+const qualityEl = document.getElementById('quality');
+
+const mMic = document.getElementById('mMic');
+const mLoad = document.getElementById('mLoad');
+const mPlayMobile = document.getElementById('mPlayMobile');
+
+/* ======= Resize & DPR ======= */
+let W=0, H=0;
+function fitCanvases(){
+  state.dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = centerWrap.getBoundingClientRect();
+  W = Math.floor(rect.width);
+  H = Math.floor(rect.height);
+
+  [bgCanvas, trailCanvas, mainCanvas].forEach(c => {
+    c.style.width = rect.width + 'px';
+    c.style.height = rect.height + 'px';
+    c.width = Math.floor(rect.width * state.dpr);
+    c.height = Math.floor(rect.height * state.dpr);
+  });
+
+  [bgCtx, tCtx, ctx].forEach(g => g.setTransform(state.dpr,0,0,state.dpr,0,0));
+}
+window.addEventListener('resize', fitCanvases);
+fitCanvases();
+
+/* ======= Audio helpers ======= */
+function createAudioContextIfNeeded(){
+  if (state.audioCtx) return;
+  state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  state.analyser = state.audioCtx.createAnalyser();
+  setQualityFFT();
+  state.analyser.smoothingTimeConstant = state.smoothing;
+  state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+  state.waveform = new Uint8Array(state.analyser.fftSize);
+}
+
+function setQualityFFT(){
+  // quality affects fftSize / bars
+  if (qualityEl.value === 'low') { state.fftSize = 1024; state.numBins = 120; }
+  else if (qualityEl.value === 'med') { state.fftSize = 2048; state.numBins = 160; }
+  else { state.fftSize = 4096; state.numBins = 256; }
+  if (state.analyser) {
+    state.analyser.fftSize = state.fftSize;
+    state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+    state.waveform = new Uint8Array(state.analyser.fftSize);
+  }
+}
+
+/* Mic start/stop */
+async function startMic(){
+  try{
+    createAudioContextIfNeeded();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stopAudioPlayback();
+    if (state.mediaStream) stopMic();
+    state.mediaStream = stream;
+    const src = state.audioCtx.createMediaStreamSource(stream);
+    connectSource(src);
+    state.source = src;
+    state.usingMic = true;
+    state.playing = true;
+    btnPlay.textContent = '⏸ Pause';
+  }catch(err){
+    alert('Microphone access denied or unavailable.');
+  }
+}
+
+function stopMic(){
+  if (state.mediaStream){ state.mediaStream.getTracks().forEach(t=>t.stop()); state.mediaStream = null; }
+  if (state.source){ try{ state.source.disconnect(); }catch(e){} state.source = null; }
+  state.usingMic = false;
+  state.playing = false;
+  btnPlay.textContent = '▶ Play';
+}
+
+/* Load audio file */
+function loadAudioFile(file){
+  if (!file) return;
+  createAudioContextIfNeeded();
+  stopMic();
+  stopAudioPlayback();
+
+  const url = URL.createObjectURL(file);
+  const a = new Audio(url);
+  a.crossOrigin = 'anonymous';
+  a.preload = 'auto';
+  a.loop = false;
+  a.play().catch(()=>{ /* autoplay may be blocked until gesture */ });
+
+  state.audioEl = a;
+  const src = state.audioCtx.createMediaElementSource(a);
+  state.source = src;
+  connectSource(src);
+  state.usingMic = false;
+  state.playing = true;
+  btnPlay.textContent = '⏸ Pause';
+
+  a.addEventListener('ended', ()=>{ state.playing = false; btnPlay.textContent = '▶ Play'; });
+}
+
+/* Connect source to analyser (and destination for playback) */
+function connectSource(src){
+  try{
+    src.connect(state.analyser);
+    // if it's an element source allow destination so audio plays
+    if (src.mediaElement) state.analyser.connect(state.audioCtx.destination);
+  }catch(e){ console.warn(e); }
+}
+
+/* Stop audio element playback */
+function stopAudioPlayback(){
+  if (state.audioEl){ try{ state.audioEl.pause(); }catch(e){} state.audioEl = null; }
+  if (state.source && !state.usingMic){ try{ state.source.disconnect(); }catch(e){} state.source = null; }
+}
+
+/* UI wiring */
+btnLoad.addEventListener('click', ()=> audioFileInput.click());
+mLoad.addEventListener('click', ()=> audioFileInput.click());
+audioFileInput.addEventListener('change', e => loadAudioFile(e.target.files[0]));
+
+btnMic.addEventListener('click', async () => {
+  if (!state.mediaStream) await startMic();
+  else stopMic();
+});
+mMic.addEventListener('click', ()=> btnMic.click());
+
+btnPlay.addEventListener('click', ()=>{
+  if (state.usingMic) return;
+  if (!state.audioEl) return;
+  if (state.audioEl.paused){ state.audioEl.play(); state.playing = true; btnPlay.textContent = '⏸ Pause'; }
+  else { state.audioEl.pause(); state.playing = false; btnPlay.textContent = '▶ Play'; }
+});
+mPlayMobile.addEventListener('click', ()=> btnPlay.click());
+
+btnFull.addEventListener('click', ()=>{
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+});
+
+modeSelect.addEventListener('change',(e)=> { state.mode = e.target.value; });
+bgSelect.addEventListener('change',(e)=> { state.bgMode = e.target.value; });
+intensityEl.addEventListener('input',(e)=> { state.intensity = parseFloat(e.target.value); intensityVal.textContent = state.intensity.toFixed(2)+'x'; });
+smoothingEl.addEventListener('input',(e)=> { state.smoothing = parseFloat(e.target.value); smoothingVal.textContent = state.smoothing; if (state.analyser) state.analyser.smoothingTimeConstant = state.smoothing; });
+qualityEl.addEventListener('change', ()=> { setQualityFFT(); });
+
+/* resume audio on user gesture (mobile) */
+['click','touchstart'].forEach(ev => document.addEventListener(ev, ()=> {
+  if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume();
+}));
+
+
+let fogOffset = 0;
+function drawFog(dt){
+  // simple animated radial gradient layers for 'moving fog' (cheap but aesthetic)
+  bgCtx.clearRect(0,0,W,H);
+  const cx = W/2, cy = H/2;
+  fogOffset += dt * 0.0008;
+  const g = bgCtx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H));
+  // subtle multi-stop using offset to animate color stops
+  const hue = (Date.now() * 0.005) % 360;
+  g.addColorStop(0, `rgba(12,12,14,${0.06 + 0.02*Math.sin(fogOffset*3)})`);
+  g.addColorStop(0.35, `rgba(8,8,10,${0.04 + 0.02*Math.cos(fogOffset*2)})`);
+  g.addColorStop(1, `rgba(0,0,0,0.8)`);
+  bgCtx.fillStyle = g;
+  bgCtx.fillRect(0,0,W,H);
+}
+
+/* background: soft glow particles */
+function spawnGlowParticle(){
+  const p = {
+    x: Math.random()*W,
+    y: Math.random()*H,
+    vx: (Math.random()-0.5)*0.25,
+    vy: (Math.random()-0.5)*0.25,
+    r: 6 + Math.random()*18,
+    life: 1,
+    hue: Math.floor(Math.random()*60)+180
+  };
+  state.particles.push(p);
+}
+function updateGlowParticles(){
+  // spawn slowly
+  if (state.particles.length < 40 && Math.random() < 0.12) spawnGlowParticle();
+  bgCtx.clearRect(0,0,W,H);
+  for (let i=state.particles.length-1;i>=0;i--){
+    const p = state.particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.002;
+    const alpha = Math.max(0, p.life);
+    const grd = bgCtx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);
+    grd.addColorStop(0, `rgba(255,255,255,${0.06*alpha})`);
+    grd.addColorStop(1, `rgba(255,255,255,0)`);
+    bgCtx.fillStyle = grd;
+    bgCtx.fillRect(p.x-p.r, p.y-p.r, p.r*2, p.r*2);
+    if (p.life <= 0.02) state.particles.splice(i,1);
+  }
+}
+
+/* trail canvas fade */
+function fadeTrail(){
+  tCtx.save();
+  tCtx.globalCompositeOperation = 'source-over';
+  tCtx.fillStyle = `rgba(0,0,0,0.12)`;
+  tCtx.fillRect(0,0,W,H);
+  tCtx.restore();
+}
+
+
+
+function smoothPath(points, tension=0.3, closed=true){
+  
+}
+
+
+function drawDoubleRing(data){
+  const cx = W/2, cy = H/2;
+  const baseInner = Math.min(W,H) * 0.18;
+  const baseOuter = Math.min(W,H) * 0.26;
+  const bins = state.numBins || Math.floor(data.length*0.75);
+  
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = '#ffffff';
+  for (let i=0;i<bins;i++){
+    const ang = (i / bins) * Math.PI * 2 - Math.PI/2;
+    const v = data[i] / 255;
+    const amp = v * (30 * state.intensity);
+    const r1 = baseInner;
+    const r2 = baseInner + Math.max(4, amp);
+    const x1 = cx + Math.cos(ang)*r1, y1 = cy + Math.sin(ang)*r1;
+    const x2 = cx + Math.cos(ang)*r2, y2 = cy + Math.sin(ang)*r2;
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+  }
+  
+  ctx.lineWidth = 3.6;
+  for (let i=0;i<bins;i++){
+    const ang = (i / bins) * Math.PI * 2 - Math.PI/2;
+    // slightly sample higher frequencies for outer ring
+    const idx = Math.min(data.length-1, Math.floor(i * (data.length/bins) * 1.2));
+    const v = data[idx] / 255;
+    const amp = v * (48 * state.intensity);
+    const r1 = baseOuter;
+    const r2 = baseOuter + Math.max(6, amp);
+    const x1 = cx + Math.cos(ang)*r1, y1 = cy + Math.sin(ang)*r1;
+    const x2 = cx + Math.cos(ang)*r2, y2 = cy + Math.sin(ang)*r2;
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+  }
+}
+
+/* drawBarsCircle: round bars, tips */
+function drawBarsCircle(data){
+  const cx = W/2, cy = H/2;
+  const base = Math.min(W,H) * 0.22;
+  const bins = state.numBins || Math.floor(data.length*0.6);
+  const angleStep = (Math.PI*2)/bins;
+  for (let i=0;i<bins;i++){
+    const ang = i * angleStep - Math.PI/2;
+    const idx = Math.floor(i * (data.length/bins));
+    const v = data[idx] / 255;
+    const len = 28 + v * (80 * state.intensity);
+    const x1 = cx + Math.cos(ang)*base, y1 = cy + Math.sin(ang)*base;
+    const x2 = cx + Math.cos(ang)*(base + len), y2 = cy + Math.sin(ang)*(base + len);
+    ctx.lineWidth = Math.max(3, Math.min(10, len*0.06));
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+
+    // tip circle
+    ctx.beginPath();
+    ctx.fillStyle = '#ffffff';
+    ctx.arc(x2,y2, Math.max(2.5, Math.min(8, len*0.03)), 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+/* drawSharpLine: continuous single ring line reacting 360 */
+function drawSharpLine(data){
+  const cx = W/2, cy = H/2;
+  const base = Math.min(W,H) * 0.23;
+  const samples = 360; // sample points for smoothness
+  ctx.beginPath();
+  ctx.lineWidth = 2.6;
+  ctx.strokeStyle = '#ffffff';
+  for (let i=0;i<samples;i++){
+    const ang = (i / samples) * Math.PI * 2 - Math.PI/2;
+    const idx = Math.floor(i * (data.length/samples));
+    const v = data[idx]/255;
+    const amp = v * (40 * state.intensity);
+    const r = base + amp;
+    const x = cx + Math.cos(ang)*r;
+    const y = cy + Math.sin(ang)*r;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
+
+/* drawSpikes: sharp outward spikes emphasizing beats */
+function drawSpikes(data){
+  const cx = W/2, cy = H/2;
+  const base = Math.min(W,H) * 0.18;
+  const bins = state.numBins || Math.floor(data.length*0.6);
+  ctx.lineWidth = 3.2;
+  for (let i=0;i<bins;i++){
+    const ang = (i / bins) * Math.PI * 2 - Math.PI/2;
+    const v = data[i] / 255;
+    const spike = 18 + v * (140 * state.intensity);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * base, cy + Math.sin(ang) * base);
+    ctx.lineTo(cx + Math.cos(ang) * (base + spike), cy + Math.sin(ang) * (base + spike));
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+  }
+}
+
+/* drawCurveSpikes: smooth curve ring + occasional spikes where bass hits */
+function drawCurveSpikes(data){
+  const cx = W/2, cy = H/2;
+  const base = Math.min(W,H) * 0.22;
+  const samples = 300;
+  
+  const waveform = state.waveform;
+  if (waveform && waveform.length){
+    state.analyser.getByteTimeDomainData(waveform);
+  }
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.beginPath();
+  for (let i=0;i<samples;i++){
+    const ang = (i/samples)*Math.PI*2 - Math.PI/2;
+    const wfIdx = Math.floor(i * (waveform.length/samples));
+    const wv = waveform[wfIdx] ? (waveform[wfIdx]-128)/128 : 0;
+    const amp = wv * (44 * state.intensity);
+    const r = base + amp;
+    const x = cx + Math.cos(ang)*r, y = cy + Math.sin(ang)*r;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  let lowAvg = 0;
+  const lowBins = Math.floor(data.length * 0.1);
+  for (let i=0;i<lowBins;i++) lowAvg += data[i];
+  lowAvg /= Math.max(1, lowBins);
+  if (lowAvg > 90){ 
+    
+    for (let i=0;i<Math.min(10, Math.floor((lowAvg-80)/10)); i++){
+      const ang = Math.random()*Math.PI*2;
+      const startR = base + 20;
+      const p = {
+        x: cx + Math.cos(ang)*startR,
+        y: cy + Math.sin(ang)*startR,
+        vx: Math.cos(ang) * (2 + Math.random()*6),
+        vy: Math.sin(ang) * (2 + Math.random()*6),
+        life: 1,
+        size: 4 + Math.random()*6
+      };
+      particlePool.push(p);
+    }
+  }
+}
+
+let particlePool = [];
+function updateParticlePool(){
+  for (let i = particlePool.length-1;i>=0;i--){
+    const p = particlePool[i];
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.995; p.vy *= 0.995; p.life -= 0.02;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(255,255,255,${Math.max(0, p.life)})`;
+    ctx.arc(p.x, p.y, p.size * Math.max(0, p.life), 0, Math.PI*2);
+    ctx.fill();
+    if (p.life <= 0.02) particlePool.splice(i,1);
+  }
+}
+
+
+let last = performance.now();
+function loop(now){
+  const dt = now - last;
+  last = now;
+  requestAnimationFrame(loop);
+
+  if (!state.analyser){
+    
+    if (state.bgMode === 'fog') drawFog(dt);
+    else if (state.bgMode === 'particles') updateGlowParticles();
+    return;
+  }
+
+  if (state.analyser.fftSize !== state.fftSize){
+    state.analyser.fftSize = state.fftSize;
+    state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+    state.waveform = new Uint8Array(state.analyser.fftSize);
+  }
+  state.analyser.getByteFrequencyData(state.dataArray);
+  if (state.bgMode === 'fog'){
+    drawFog(dt);
+  } else if (state.bgMode === 'particles'){
+    updateGlowParticles();
+  } else {
+    // clear bg
+    bgCtx.clearRect(0,0,W,H);
+  }
+
+  fadeTrail();
+
+  ctx.clearRect(0,0,W,H);
+  const data = state.dataArray;
+  switch (state.mode){
+    case 'double': drawDoubleRing(data); break;
+    case 'bars': drawBarsCircle(data); break;
+    case 'sharp': drawSharpLine(data); break;
+    case 'spikes': drawSpikes(data); break;
+    case 'curveSpikes': drawCurveSpikes(data); break;
+    default: drawDoubleRing(data);
+  }
+
+  updateParticlePool();
+}
+requestAnimationFrame(loop);
+
+intensityVal.textContent = state.intensity.toFixed(2)+'x';
+smoothingVal.textContent = state.smoothing;
+modeSelect.value = state.mode;
+bgSelect.value = state.bgMode;
+qualityEl.value = 'med';
+setQualityFFT();
+
+window.addEventListener('pagehide', ()=>{
+  if (state.mediaStream) state.mediaStream.getTracks().forEach(t=>t.stop());
+  if (state.audioEl) try{ state.audioEl.pause(); }catch(e){}
+  if (state.audioCtx) try{ state.audioCtx.close(); }catch(e){}
+});
+
+document.addEventListener('click', ()=> { if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume(); });
+
+</script>
+</body>
+</html>
